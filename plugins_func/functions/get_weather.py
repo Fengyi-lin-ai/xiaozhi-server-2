@@ -161,11 +161,16 @@ def parse_weather_info(soup):
 @register_function("get_weather", GET_WEATHER_FUNCTION_DESC, ToolType.SYSTEM_CTL)
 def get_weather(conn: "ConnectionHandler", location: str = None, lang: str = "zh_CN"):
     from core.utils.cache.manager import cache_manager, CacheType
-
-    weather_config = conn.config.get("plugins", {}).get("get_weather", {})
-    api_host = weather_config.get("api_host", "mj7p3y7naa.re.qweatherapi.com")
-    api_key = weather_config.get("api_key", "a861d0d5e7bf4ee1a83d9a9e4f96d4da")
-    default_location = weather_config.get("default_location", "广州")
+    api_host = "my4ewtrf64.re.qweatherapi.com"
+    api_key = "8d18826e6f49463b96bcc89a294a77d8"
+    default_location = "福州市"
+    # api_host = conn.config["plugins"]["get_weather"].get(
+    #     "api_host", "mj7p3y7naa.re.qweatherapi.com"
+    # )
+    # api_key = conn.config["plugins"]["get_weather"].get(
+    #     "api_key", "a861d0d5e7bf4ee1a83d9a9e4f96d4da"
+    # )
+    # default_location = conn.config["plugins"]["get_weather"]["default_location"]
     client_ip = conn.client_ip
 
     # 优先使用用户提供的location参数

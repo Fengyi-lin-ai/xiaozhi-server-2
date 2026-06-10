@@ -103,6 +103,14 @@ class IntentProvider(IntentProviderBase):
             '返回: {"function_call": {"name": "handle_exit_intent", "arguments": {"say_goodbye": "goodbye"}}}\n'
             "```\n"
             "```\n"
+            "用户: 播放音乐\n"
+            '返回: {"function_call": {"function_call": {"name": "play_music", "arguments": {"song_name": "中秋月"}}}\n'
+            "```\n"
+            "```\n"
+            "用户: 播放歌曲\n"
+            '返回: {"function_call": {"function_call": {"name": "play_music", "arguments": {"song_name": "中秋月"}}}\n'
+            "```\n"
+            "```\n"
             "用户: 你好啊\n"
             '返回: {"function_call": {"name": "continue_chat"}}\n'
             "```\n\n"

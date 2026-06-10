@@ -5,8 +5,26 @@ if TYPE_CHECKING:
     from core.connection import ConnectionHandler
 
 TAG = __name__
+
+EMOJI_MAP2 = {
+    "happy": "🙂",
+    "sad": "😔",
+    "angry": "😠",
+    "surprised": "😲",
+    "fear": "😱",
+    "hate": "🙄",
+    "excited": "😲",
+    "coldness": "😏",
+    "neutral": "😶",
+    "depressed": "😍",
+    "shy": "😜",
+    "comfort": "😏",
+    "tension": "😔",
+    "tender": "😘"
+}
+
 EMOJI_MAP = {
-    "😂": "funny",
+    "😂": "laughing",
     "😭": "crying",
     "😠": "angry",
     "😔": "sad",
@@ -85,10 +103,10 @@ async def get_emotion(conn: "ConnectionHandler", text):
     """获取文本内的情绪消息"""
     emoji = "🙂"
     emotion = "happy"
-    for char in text:
-        if char in EMOJI_MAP:
-            emoji = char
-            emotion = EMOJI_MAP[char]
+    for key, value in EMOJI_MAP2.items():
+        if key in text:
+            emoji = value
+            emotion = EMOJI_MAP[EMOJI_MAP2[key]]
             break
     try:
         await conn.websocket.send(

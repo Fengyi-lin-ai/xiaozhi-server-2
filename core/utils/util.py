@@ -15,6 +15,29 @@ from pydub import AudioSegment
 from typing import Callable, Any
 
 TAG = __name__
+emoji_map = {
+    "neutral": "😶",
+    "happy": "🙂",
+    "laughing": "😆",
+    "funny": "😂",
+    "sad": "😔",
+    "angry": "😠",
+    "crying": "😭",
+    "loving": "😍",
+    "embarrassed": "😳",
+    "surprised": "😲",
+    "shocked": "😱",
+    "thinking": "🤔",
+    "winking": "😉",
+    "cool": "😎",
+    "relaxed": "😌",
+    "delicious": "🤤",
+    "kissy": "😘",
+    "confident": "😏",
+    "sleepy": "😴",
+    "silly": "😜",
+    "confused": "🙄",
+}
 
 
 def get_local_ip():

@@ -1,10 +1,12 @@
 from ..base import MemoryProviderBase, logger
 import time
+import datetime
+import re
 import json
 import os
 import yaml
 from config.config_loader import get_project_dir
-from config.manage_api_client import generate_and_save_chat_summary
+from config.manage_api_client import save_mem_local_short,save_intimacy
 import asyncio
 from core.utils.util import check_model_key
 
@@ -75,6 +77,18 @@ short_term_memory_prompt = """
 ```
 """
 
+short_term_memory_prompt_only_content = """
+你是一个经验丰富的记忆总结者，擅长将对话内容进行总结摘要，遵循以下规则：
+1、总结user的重要信息，以便在未来的对话中提供更个性化的服务
+2、不要重复总结，不要遗忘之前记忆，除非原来的记忆超过了1800字内，否则不要遗忘、不要压缩用户的历史记忆
+3、用户操控的设备音量、播放音乐、天气、退出、不想对话等和用户本身无关的内容，这些信息不需要加入到总结中
+4、聊天内容中的今天的日期时间、今天的天气情况与用户事件无关的数据，这些信息如果当成记忆存储会影响后序对话，这些信息不需要加入到总结中
+5、不要把设备操控的成果结果和失败结果加入到总结中，也不要把用户的一些废话加入到总结中
+6、不要为了总结而总结，如果用户的聊天没有意义，请返回原来的历史记录也是可以的
+7、只需要返回总结摘要，严格控制在1800字内
+8、不要包含代码、xml，不需要解释、注释和说明，保存记忆时仅从对话提取信息，不要混入示例内容
+"""
+
 
 def extract_json_data(json_code):
     start = json_code.find("```json")
@@ -99,6 +113,15 @@ class MemoryProvider(MemoryProviderBase):
     def __init__(self, config, summary_memory):
         super().__init__(config)
         self.short_memory = ""
+        self.intimacy = None
+        self.intimacyRate = None
+        self.intimacyRule = None
+        if(config.get("intimacy") is not None and config.get("intimacy") != ""):
+            self.intimacy = config.get("intimacy")
+        if(config.get("intimacyRate") is not None and config.get("intimacyRate") != ""):
+            self.intimacyRate = config.get("intimacyRate")
+        if(config.get("intimacyRule") is not None and config.get("intimacyRule") != ""):
+            self.intimacyRule = config.get("intimacyRule")
         self.save_to_file = True
         self.memory_path = get_project_dir() + "data/.memory.yaml"
         self.load_memory(summary_memory)
@@ -132,7 +155,7 @@ class MemoryProvider(MemoryProviderBase):
         with open(self.memory_path, "w", encoding="utf-8") as f:
             yaml.dump(all_memory, f, allow_unicode=True)
 
-    async def save_memory(self, msgs, session_id=None):
+    async def save_memory(self, msgs):
         # 打印使用的模型信息
         model_info = getattr(self.llm, "model_name", str(self.llm.__class__.__name__))
         logger.bind(tag=TAG).debug(f"使用记忆保存模型: {model_info}")
@@ -148,54 +171,96 @@ class MemoryProvider(MemoryProviderBase):
             return None
 
         msgStr = ""
-        for msg in msgs:
-            content = msg.content
-
-            # Extract content from JSON format if present (for ASR with emotion/language tags)
-            try:
-                if content and content.strip().startswith("{") and content.strip().endswith("}"):
-                    data = json.loads(content)
-                    if "content" in data:
-                        content = data["content"]
-            except (json.JSONDecodeError, KeyError, TypeError):
-                # If parsing fails, use original content
-                pass
-
-            if msg.role == "user":
-                msgStr += f"User: {content}\n"
-            elif msg.role == "assistant":
-                msgStr += f"Assistant: {content}\n"
+        msgList = []
+        for index, value in enumerate(msgs):
+            if index > 0:
+                msgList.append({"role": value.role, "content": self.convert_date_to_timestamp(value.content)})
+        # for msg in msgs:
+        #     if msg.role == "user":
+        #         msgStr += f"User: {msg.content}\n"
+        #     elif msg.role == "assistant":
+        #         msgStr += f"Assistant: {msg.content}\n"
         if self.short_memory and len(self.short_memory) > 0:
-            msgStr += "历史记忆：\n"
-            msgStr += self.short_memory
+            short_memory_list = json.loads(self.short_memory)
+            memory_all_length = 26 - len(msgList)
+            if memory_all_length >= len(short_memory_list):
+                msgList.extend(short_memory_list)
+            else:
+                start_index = len(msgList)-1
+                msgList = msgList + memory_all_length[start_index:]
+        msgStr = json.dumps(msgList, ensure_ascii=False)
 
-        # 当前时间
-        time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        msgStr += f"当前时间：{time_str}"
 
-        if self.save_to_file:
-            try:
-                result = self.llm.response_no_stream(
-                    short_term_memory_prompt,
-                    msgStr,
-                    max_tokens=2000,
-                    temperature=0.2,
-                )
-                json_str = extract_json_data(result)
-                json.loads(json_str)  # 检查json格式是否正确
-                self.short_memory = json_str
-                self.save_memory_to_file()
-            except Exception as e:
-                logger.bind(tag=TAG).error(f"Error in saving memory: {e}")
-        else:
-            # 当save_to_file为False时，调用Java端的聊天记录总结接口
-            summary_id = session_id if session_id else self.role_id
-            await generate_and_save_chat_summary(summary_id)
-        logger.bind(tag=TAG).info(
-            f"Save memory successful - Role: {self.role_id}, Session: {session_id}"
-        )
-
+        self.short_memory = msgStr
+        self.save_memory_to_file()
+        # if self.save_to_file:
+        #     result = self.llm.response_no_stream(
+        #         short_term_memory_prompt,
+        #         msgStr,
+        #         max_tokens=2000,
+        #         temperature=0.2,
+        #     )
+        #     json_str = extract_json_data(result)
+        #     try:
+        #         json.loads(json_str)  # 检查json格式是否正确
+        #         self.short_memory = json_str
+        #         self.save_memory_to_file()
+        #     except Exception as e:
+        #         print("Error:", e)
+        # else:
+        #     result = self.llm.response_no_stream(
+        #         short_term_memory_prompt_only_content,
+        #         msgStr,
+        #         max_tokens=2000,
+        #         temperature=0.2,
+        #     )
+        #     # 使用异步版本，需要在事件循环中运行
+        #     try:
+        #         loop = asyncio.get_running_loop()
+        #         loop.create_task(save_mem_local_short(self.role_id, result))
+        #     except RuntimeError:
+        #         # 如果没有运行中的事件循环，创建一个新的
+        #         asyncio.run(save_mem_local_short(self.role_id, result))
+        logger.bind(tag=TAG).info(f"Save memory successful - Role: {self.role_id}")
+        # 使用异步版本，需要在事件循环中运行
+        if self.intimacyRule is not None:
+            await save_intimacy(self.role_id, self.intimacy,self.intimacyRate)
         return self.short_memory
 
     async def query_memory(self, query: str) -> str:
+        # short_memory = get_mem_local_short(self.role_id)
+        # self.short_memory = None
+        # if short_memory is not None:
+        #     short_memory = short_memory["summaryMemory"]
         return self.short_memory
+    
+    def convert_date_to_timestamp(self, text):
+        """
+        将文本中包含"前天","昨天","今天","明天","后天"的字符串替换为对应的时间戳
+        格式为 %Y-%m-%d %H:%M:%S
+        """
+        now = datetime.datetime.now()
+        
+        # 定义相对日期映射
+        date_map = {
+            "大前天": -3,
+            "前天": -2,
+            "昨天": -1,
+            "今天": 0,
+            "明天": 1,
+            "后天": 2,
+            "大后天": 3
+        }
+        
+        # 创建正则表达式模式，匹配所有相对日期
+        pattern = '|'.join(re.escape(key) for key in date_map.keys())
+        
+        def replace_func(match):
+            key = match.group()
+            offset = date_map[key]
+            target_date = now + datetime.timedelta(days=offset)
+            return target_date.strftime("%Y年%m月%d日")
+        
+        # 替换所有匹配的相对日期
+        result = re.sub(pattern, replace_func, text)
+        return result

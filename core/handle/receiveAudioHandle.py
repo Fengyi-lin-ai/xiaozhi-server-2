@@ -128,7 +128,7 @@ async def max_out_size(conn: "ConnectionHandler"):
     conn.client_abort = False
     text = "不好意思，我现在有点事情要忙，明天这个时候我们再聊，约好了哦！明天不见不散，拜拜！"
     await send_stt_message(conn, text)
-    file_path = "config/assets/max_output_size.wav"
+    file_path = "config/assets/max_output_size.mp3"
     opus_packets = await audio_to_data(file_path)
     conn.tts.tts_audio_queue.put((SentenceType.LAST, opus_packets, text))
     conn.close_after_chat = True
@@ -147,7 +147,7 @@ async def check_bind_device(conn: "ConnectionHandler"):
         await send_stt_message(conn, text)
 
         # 播放提示音
-        music_path = "config/assets/bind_code.wav"
+        music_path = "config/assets/bind_code.mp3"
         opus_packets = await audio_to_data(music_path)
         conn.tts.tts_audio_queue.put((SentenceType.FIRST, opus_packets, text))
 
@@ -155,7 +155,7 @@ async def check_bind_device(conn: "ConnectionHandler"):
         for i in range(6):  # 确保只播放6位数字
             try:
                 digit = conn.bind_code[i]
-                num_path = f"config/assets/bind_code/{digit}.wav"
+                num_path = f"config/assets/bind_code/{digit}.mp3"
                 num_packets = await audio_to_data(num_path)
                 conn.tts.tts_audio_queue.put((SentenceType.MIDDLE, num_packets, None))
             except Exception as e:
@@ -167,6 +167,6 @@ async def check_bind_device(conn: "ConnectionHandler"):
         conn.client_abort = False
         text = f"没有找到该设备的版本信息，请正确配置 OTA地址，然后重新编译固件。"
         await send_stt_message(conn, text)
-        music_path = "config/assets/bind_not_found.wav"
+        music_path = "config/assets/bind_not_found.mp3"
         opus_packets = await audio_to_data(music_path)
         conn.tts.tts_audio_queue.put((SentenceType.LAST, opus_packets, text))

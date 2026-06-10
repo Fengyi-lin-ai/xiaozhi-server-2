@@ -118,7 +118,7 @@ async def handle_user_intent(conn: "ConnectionHandler", text):
         intent_result = f'{{"function_call": {{ "name": "self_get_device_status", "arguments": {{ "volume": {volume} }} }} }}'
     elif ('播放' in text and '歌曲'in text) or ('播放' in text and '音乐'in text) or ('听' in text and '音乐'in text):
         if conn.isOpenSong  == 1:
-            # 使用LLM进行意图分析
+            # 使用LLM进行意图分析1
             intent_result = await analyze_intent_with_llm(conn, text)
         else:
             # 使用LLM进行意图分析

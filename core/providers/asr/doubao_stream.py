@@ -30,6 +30,7 @@ class ASRProvider(ASRProviderBase):
 
         # 配置参数
         self.appid = str(config.get("appid"))
+        self.cluster = config.get("cluster")
         self.access_token = config.get("access_token")
         # 资源ID，用于区分不同的ASR模型（默认1.0模型小时版，v2版本使用seed-asr）
         self.resource_id = config.get("resource_id", "volc.bigasr.sauc.duration")
@@ -64,14 +65,16 @@ class ASRProvider(ASRProviderBase):
         self.secret = config.get("secret", "access_secret")
         end_window_size = config.get("end_window_size")
         self.end_window_size = int(end_window_size) if end_window_size else 200
-
+        self.asrVocabName = ""
+        if(config.get("asrVocabName") is not None and config.get("asrVocabName") != ""):
+            self.asrVocabName = config.get("asrVocabName")
     async def open_audio_channels(self, conn):
         await super().open_audio_channels(conn)
 
     async def receive_audio(self, conn: "ConnectionHandler", audio, audio_have_voice):
         # 先调用父类方法处理基础逻辑
         await super().receive_audio(conn, audio, audio_have_voice)
-        
+
         # 如果本次有声音，且之前没有建立连接
         if audio_have_voice and self.asr_ws is None and not self.is_processing:
             try:
@@ -289,6 +292,7 @@ class ASRProvider(ASRProviderBase):
         req = {
             "app": {
                 "appid": self.appid,
+                "cluster": self.cluster,
                 "token": self.access_token,
             },
             "user": {"uid": self.uid},
@@ -300,9 +304,8 @@ class ASRProvider(ASRProviderBase):
                 "sequence": 1,
                 "end_window_size": self.end_window_size,
                 "corpus": {
-                    "boosting_table_name": self.boosting_table_name,
-                    "correct_table_name": self.correct_table_name,
-                }
+                    "boosting_table_name": f"{self.asrVocabName}",
+                },
             },
             "audio": {
                 "format": self.format,

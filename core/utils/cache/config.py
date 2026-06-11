@@ -20,7 +20,7 @@ class CacheType(Enum):
     DEVICE_PROMPT = "device_prompt"
     VOICEPRINT_HEALTH = "voiceprint_health"  # 声纹识别健康检查
     AUDIO_DATA = "audio_data"  # 音频数据缓存
-
+    DEVICE_STATUS = "device_status"  # 设备状态缓存
 
 @dataclass
 class CacheConfig:

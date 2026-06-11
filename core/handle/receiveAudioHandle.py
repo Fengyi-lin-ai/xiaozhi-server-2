@@ -96,9 +96,14 @@ async def startToChat(conn: "ConnectionHandler", text):
     conn.executor.submit(conn.chat, actual_text)
 
 
-async def no_voice_close_connect(conn: "ConnectionHandler", have_voice):
+async def no_voice_close_connect(conn, have_voice):
+    if conn.last_activity_time > 0.0 and have_voice is False:
+        no_voice_time = time.time() * 1000 - conn.last_activity_time
+        conn.no_voice_time = no_voice_time
     if have_voice:
         conn.last_activity_time = time.time() * 1000
+        conn.has_response_count = 0
+        conn.has_response_flag = False
         return
     # 只有在已经初始化过时间戳的情况下才进行超时检查
     if conn.last_activity_time > 0.0:

@@ -147,6 +147,8 @@ class ConnectionHandler:
         self.first_activity_time = 0.0  # 记录首次活动的时间（毫秒）
         self.last_activity_time = 0.0  # 统一的活动时间戳（毫秒）
         self.vad_last_voice_time = 0.0  # 记录用户最后一次说话的时间（毫秒）
+        self.has_response_count = 0 # 连续冷场次数
+        self.has_response_flag = False # 冷场后是否回复过
         self.client_voice_stop = False
         self.last_is_voice = False
 
@@ -158,6 +160,7 @@ class ConnectionHandler:
         self.current_speaker = None  # 存储当前说话人
 
         # llm相关变量
+        self.llm_finish_task = True
         self.dialogue = Dialogue()
 
         # tts相关变量
@@ -212,7 +215,8 @@ class ConnectionHandler:
             )
 
             self.device_id = self.headers.get("device-id", None)
-
+            # 语音等待时长默认-1秒,即不开启等待事件
+            self.wait_time = -1
             # 认证通过,继续处理
             self.websocket = ws
 
@@ -225,11 +229,22 @@ class ConnectionHandler:
             # 初始化活动时间戳
             self.first_activity_time = time.time() * 1000
             self.last_activity_time = time.time() * 1000
-
+            self.has_response_count = 0 # 重置冷场状态
+            self.has_response_flag = False
             # 启动超时检查任务
             self.timeout_task = asyncio.create_task(self._check_timeout())
 
             self.welcome_msg = self.config["xiaozhi"]
+            # 确保 welcome_msg 是一个字典对象，而不是字符串
+            if isinstance(self.welcome_msg, str):
+                try:
+                    import json
+                    self.welcome_msg = json.loads(self.welcome_msg)
+                except (json.JSONDecodeError, ImportError):
+                    # 如果解析失败，则创建一个新的字典
+                    self.welcome_msg = {"type": "hello", "version": 1, "transport": "websocket"}
+            
+            # 现在可以安全地添加 session_id
             self.welcome_msg["session_id"] = self.session_id
 
             # 从配置中读取采样率
@@ -268,26 +283,6 @@ class ConnectionHandler:
     async def _save_and_close(self, ws):
         """保存记忆并关闭连接"""
         try:
-            # 守护线程1：独立生成标题（不依赖记忆模型）
-            if self.session_id:
-                def generate_title_task():
-                    try:
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        loop.run_until_complete(
-                            generate_and_save_chat_title(self.session_id)
-                        )
-                    except Exception as e:
-                        self.logger.bind(tag=TAG).error(f"生成标题失败: {e}")
-                    finally:
-                        try:
-                            loop.close()
-                        except Exception:
-                            pass
-
-                threading.Thread(target=generate_title_task, daemon=True).start()
-
-            # 守护线程2：走老流程记忆保存（仅记忆，不含标题）
             if self.memory:
                 # 使用线程池异步保存记忆
                 def save_memory_task():
@@ -296,9 +291,7 @@ class ConnectionHandler:
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         loop.run_until_complete(
-                            self.memory.save_memory(
-                                self.dialogue.dialogue, self.session_id
-                            )
+                            self.memory.save_memory(self.dialogue.dialogue)
                         )
                     except Exception as e:
                         self.logger.bind(tag=TAG).error(f"保存记忆失败: {e}")
@@ -687,6 +680,30 @@ class ConnectionHandler:
                 self.headers.get("client-id", self.headers.get("device-id")),
             )
             private_config["delete_audio"] = bool(self.config.get("delete_audio", True))
+            self.agentId =  private_config["agentId"]
+            self.isOpenMemory =  private_config["isOpenMemory"]
+            self.isOpenWeather =  private_config["isOpenWeather"]
+            self.isOpenSong =  private_config["isOpenSong"]
+            self.isFixedScript =  private_config["isFixedScript"]
+            self.fixedScriptList =  private_config["fixedScriptList"]
+            self.wait_records = private_config["waitRecords"]
+            self.asrVocabType = private_config["asrVocabType"]
+            self.asrVocabId = private_config["asrVocabId"]
+            self.asrVocabName = private_config["asrVocabName"]
+            if(private_config["selected_module"]["ASR"] == "ASR_DoubaoStreamASR"):
+                private_config["ASR"]["ASR_DoubaoStreamASR"]["asrVocabName"] = private_config["asrVocabName"]
+                self.config["ASR"] = private_config["ASR"]
+            self.minSilenceDurationMs = private_config["minSilenceDurationMs"]
+            self.intimacy = private_config["intimacy"]
+            self.intimacyRate = private_config["intimacyRate"]
+            self.intimacyRule = private_config["intimacyRule"]
+            self.batchId = private_config["batchId"]
+            self.thresholdLow = private_config["thresholdLow"]
+            if self.wait_records and len(self.wait_records) > 0:
+                random_number = random.randint(0, len(self.wait_records)-1)
+                self.wait_audio_file_url = self.wait_records[random_number].get("file_url")
+                self.wait_time = self.wait_records[random_number].get("wait_time")
+
             self.logger.bind(tag=TAG).info(
                 f"{time.time() - begin_time} 秒，异步获取差异化配置成功: {json.dumps(filter_sensitive_info(private_config), ensure_ascii=False)}"
             )
@@ -720,6 +737,15 @@ class ConnectionHandler:
                 "VAD"
             ]
         if init_asr:
+            selected_asr_module = private_config["selected_module"]["ASR"]
+            if(private_config.get("asrVocabType") is not None):
+                private_config["ASR"][selected_asr_module]["asrVocabType"] = private_config["asrVocabType"]
+            if(private_config.get("asrVocabId") is not None):
+                private_config["ASR"][selected_asr_module]["asrVocabId"] = private_config["asrVocabId"]
+            if(private_config.get("thresholdLow") is not None):
+                private_config["ASR"][selected_asr_module]["thresholdLow"] = private_config["thresholdLow"]
+            if(private_config.get("minSilenceDurationMs") is not None):
+                private_config["ASR"][selected_asr_module]["minSilenceDurationMs"] = 1000 - private_config["minSilenceDurationMs"]
             self.config["ASR"] = private_config["ASR"]
             self.config["selected_module"]["ASR"] = private_config["selected_module"][
                 "ASR"
@@ -732,6 +758,15 @@ class ConnectionHandler:
             ]
         if private_config.get("LLM", None) is not None:
             init_llm = True
+            selected_llm_module = private_config["selected_module"]["LLM"]
+            if(private_config.get("intimacy") is not None):
+                private_config["LLM"][selected_llm_module]["intimacy"] = private_config["intimacy"]
+            if(private_config.get("intimacyRate") is not None):
+                private_config["LLM"][selected_llm_module]["intimacyRate"] = private_config["intimacyRate"]
+            if(private_config.get("intimacyRule") is not None):
+                private_config["LLM"][selected_llm_module]["intimacyRule"] = private_config["intimacyRule"]
+            if(private_config.get("isOpenMemory") is not None):
+                private_config["LLM"][selected_llm_module]["isOpenMemory"] = private_config["isOpenMemory"]
             self.config["LLM"] = private_config["LLM"]
             self.config["selected_module"]["LLM"] = private_config["selected_module"][
                 "LLM"
@@ -742,6 +777,13 @@ class ConnectionHandler:
                 "VLLM"
             ]
         if private_config.get("Memory", None) is not None:
+            selected_memory_module = private_config["selected_module"]["Memory"]
+            if(private_config.get("intimacy") is not None):
+                private_config["Memory"][selected_memory_module]["intimacy"] = private_config["intimacy"]
+            if(private_config.get("intimacyRate") is not None):
+                private_config["Memory"][selected_memory_module]["intimacyRate"] = private_config["intimacyRate"]
+            if(private_config.get("intimacyRule") is not None):
+                private_config["Memory"][selected_memory_module]["intimacyRule"] = private_config["intimacyRule"]
             init_memory = True
             self.config["Memory"] = private_config["Memory"]
             self.config["selected_module"]["Memory"] = private_config[
@@ -819,10 +861,10 @@ class ConnectionHandler:
             return
         """初始化记忆模块"""
         self.memory.init_memory(
-            role_id=self.device_id,
+            role_id=self.agentId + "_" + self.device_id,
             llm=self.llm,
             summary_memory=self.config.get("summaryMemory", None),
-            save_to_file=not self.read_config_from_api,
+            save_to_file=self.read_config_from_api,
         )
 
         # 获取记忆总结配置
@@ -969,8 +1011,7 @@ class ConnectionHandler:
         try:
             # 使用带记忆的对话
             memory_str = None
-            # 仅当query非空（代表用户询问）时查询记忆
-            if self.memory is not None and query:
+            if self.memory is not None:
                 future = asyncio.run_coroutine_threadsafe(
                     self.memory.query_memory(query), self.loop
                 )
@@ -991,6 +1032,7 @@ class ConnectionHandler:
                     self.dialogue.get_llm_dialogue_with_memory(
                         memory_str, self.config.get("voiceprint", {})
                     ),
+                    self.device_id,
                 )
         except Exception as e:
             self.logger.bind(tag=TAG).error(f"LLM 处理出错 {query}: {e}")
@@ -1001,6 +1043,7 @@ class ConnectionHandler:
         # 支持多个并行工具调用 - 使用列表存储
         tool_calls_list = []  # 格式: [{"id": "", "name": "", "arguments": ""}]
         content_arguments = ""
+        self.client_abort = False
         emotion_flag = True
         try:
             for response in llm_responses:

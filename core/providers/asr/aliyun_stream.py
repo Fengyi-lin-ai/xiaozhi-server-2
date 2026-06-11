@@ -8,6 +8,8 @@ import asyncio
 import requests
 import websockets
 import opuslib_next
+import random
+from typing import Optional, Tuple, List
 from urllib import parse
 from datetime import datetime
 from config.logger import setup_logging
@@ -85,7 +87,13 @@ class ASRProvider(ASRProviderBase):
         self.access_key_secret = config.get("access_key_secret")
         self.appkey = config.get("appkey")
         self.token = config.get("token")
-        self.host = config.get("host", "nls-gateway-cn-shanghai.aliyuncs.com")
+        self.asrVocabId = ""
+        if(config.get("asrVocabId") is not None and config.get("asrVocabId") != ""):
+            self.asrVocabId = config.get("asrVocabId")
+        self.minSilenceDurationMs = 5
+        if(config.get("minSilenceDurationMs") is not None and config.get("minSilenceDurationMs") != ""):
+            self.minSilenceDurationMs = config.get("minSilenceDurationMs")
+        self.host = config.get("host", "nls-gateway.aliyuncs.com")
         # 如果配置的是内网地址（包含-internal.aliyuncs.com），则使用ws协议，默认是wss协议
         if "-internal." in self.host:
             self.ws_url = f"ws://{self.host}/ws/v1"
@@ -141,14 +149,23 @@ class ASRProvider(ASRProviderBase):
                 logger.bind(tag=TAG).error(f"开始识别失败: {str(e)}")
                 await self._cleanup()
                 return
-
-        if self.asr_ws and self.is_processing and self.server_ready:
-            try:
-                pcm_frame = self.decoder.decode(audio, 960)
-                await self.asr_ws.send(pcm_frame)
-            except Exception as e:
-                logger.bind(tag=TAG).warning(f"发送音频失败: {str(e)}")
-                await self._cleanup()
+        if(conn.batchId is not None and conn.batchId == "E2"):
+            if self.asr_ws and self.is_processing and self.server_ready:
+                try:
+                    pcm_frame = self.decoder.decode(audio, 960)
+                    await self.asr_ws.send(pcm_frame)
+                except Exception as e:
+                    logger.bind(tag=TAG).warning(f"发送音频失败: {str(e)}")
+                    await self._cleanup()
+        else:
+            if conn.no_voice_time > self.minSilenceDurationMs:
+                if self.asr_ws and self.is_processing and self.server_ready:
+                    try:
+                        pcm_frame = self.decoder.decode(audio, 960)
+                        await self.asr_ws.send(pcm_frame)
+                    except Exception as e:
+                        logger.bind(tag=TAG).warning(f"发送音频失败: {str(e)}")
+                        await self._cleanup()
 
     async def _start_recognition(self, conn: "ConnectionHandler"):
         """开始识别会话"""
@@ -163,7 +180,7 @@ class ASRProvider(ASRProviderBase):
             max_size=1000000000,
             ping_interval=None,
             ping_timeout=None,
-            close_timeout=5,
+            close_timeout=40,
         )
 
         self.task_id = uuid.uuid4().hex
@@ -193,6 +210,8 @@ class ASRProvider(ASRProviderBase):
                 "enable_voice_detection": False,
             }
         }
+        if self.asrVocabId is not None and self.asrVocabId != "":
+            start_request["payload"]["vocabulary_id"] = self.asrVocabId
         await self.asr_ws.send(json.dumps(start_request, ensure_ascii=False))
         logger.bind(tag=TAG).debug("已发送开始请求，等待服务器准备...")
 
@@ -265,11 +284,8 @@ class ASRProvider(ASRProviderBase):
                                 break
 
                 except asyncio.TimeoutError:
-                    logger.bind(tag=TAG).error("接收结果超时")
-                    break
-                except websockets.ConnectionClosed:
-                    logger.bind(tag=TAG).info("ASR服务连接已关闭")
-                    self.is_processing = False
+                    continue
+                except websockets.exceptions.ConnectionClosed:
                     break
                 except Exception as e:
                     logger.bind(tag=TAG).error(f"处理结果失败: {str(e)}")
@@ -300,6 +316,8 @@ class ASRProvider(ASRProviderBase):
                 }
                 logger.bind(tag=TAG).debug("停止识别请求已发送")
                 await self.asr_ws.send(json.dumps(stop_msg, ensure_ascii=False))
+                await asyncio.sleep(0.1)
+                logger.bind(tag=TAG).info("ASR终止请求已发送")
             except Exception as e:
                 logger.bind(tag=TAG).error(f"发送停止识别请求失败: {e}")
 

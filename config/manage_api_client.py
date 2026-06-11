@@ -219,6 +219,45 @@ async def generate_and_save_chat_title(session_id: str) -> Optional[Dict]:
         return None
 
 
+async def save_mem_local_short(mac_address: str, short_momery: str) -> Optional[Dict]:
+    try:
+        return await ManageApiClient._instance._execute_async_request(
+            "PUT",
+            f"/agent/saveMemory/" + mac_address,
+            json={
+                "summaryMemory": short_momery,
+            },
+        )
+    except Exception as e:
+        print(f"存储短期记忆到服务器失败: {e}")
+        return None
+    
+def get_mem_local_short(mac_address: str) -> Optional[Dict]:
+    try:
+        return ManageApiClient._instance._execute_request(
+            "POST",
+            f"/agent/getMemory/" + mac_address,
+        )
+    except Exception as e:
+        print(f"获取短期记忆失败: {e}")
+        return None
+    
+async def save_intimacy(mac_address: str, intimacy: str, intimacy_val: str) -> Optional[Dict]:
+    try:
+        return await ManageApiClient._instance._execute_async_request(
+            "POST",
+            f"/agent/saveIntimacy",
+            json={
+                "macAddress": mac_address,
+                "intimacy": intimacy,
+                "intimacyVal": intimacy_val,
+            },
+        )
+    except Exception as e:
+        print(f"存储亲密度到服务器失败: {e}")
+        return None
+
+
 async def report(
     mac_address: str, session_id: str, chat_type: int, content: str, audio, report_time
 ) -> Optional[Dict]:

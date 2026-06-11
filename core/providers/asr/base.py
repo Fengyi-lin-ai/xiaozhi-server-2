@@ -19,6 +19,7 @@ from core.handle.receiveAudioHandle import startToChat
 from core.handle.reportHandle import enqueue_asr_report
 from core.utils.util import remove_punctuation_and_length
 from core.handle.receiveAudioHandle import handleAudioMessage
+from typing import Optional, Tuple, List
 from typing import Optional, Tuple, List, NamedTuple, TYPE_CHECKING
 
 

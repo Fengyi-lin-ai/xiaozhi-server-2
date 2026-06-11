@@ -3,15 +3,20 @@ import uuid
 import json
 import queue
 import asyncio
+import re
 import traceback
+import time
+from typing import Callable, Any
 import websockets
 
 from typing import Callable, Any
 from config.logger import setup_logging
+from core.utils import opus_encoder_utils
 from core.utils.util import check_model_key
 from core.providers.tts.base import TTSProviderBase
 from core.utils.tts import MarkdownCleaner, convert_percentage_to_range
 from core.providers.tts.dto.dto import SentenceType, ContentType, InterfaceType
+from asyncio import Task
 
 
 TAG = __name__
@@ -326,8 +331,18 @@ class TTSProvider(TTSProviderBase):
                             logger.bind(tag=TAG).debug(
                                 f"开始发送TTS文本: {message.content_detail}"
                             )
+                            pattern = r'<cot text=(.*?)>'
+                            matches = re.findall(pattern, message.content_detail)
+                            cleaned_text = message.content_detail
+                            if self.conn.memory.intimacyRule is not None:
+                                if self.conn.memory.intimacyRule != "":
+                                    self.conn.memory.intimacy = self.conn.llm.intimacy
+                                    self.conn.memory.intimacyRate = self.conn.llm.intimacyRate
+                            if matches and len(matches) > 0:
+                                self.cot = matches[0]
+                                cleaned_text = re.sub(pattern, '', message.content_detail)
                             future = asyncio.run_coroutine_threadsafe(
-                                self.text_to_speak(message.content_detail, None),
+                                self.text_to_speak(cleaned_text, None),
                                 loop=self.conn.loop,
                             )
                             future.result(timeout=self.tts_timeout)

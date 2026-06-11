@@ -1,5 +1,6 @@
 import os
 import re
+import time
 import uuid
 import queue
 import asyncio
@@ -122,6 +123,17 @@ class TTSProviderBase(ABC):
 
     def to_tts_stream(self, text, opus_handler: Callable[[bytes], None] = None) -> None:
         # 保留原始文本用于显示/上报
+        pattern = r'<cot text=(.*?)>'
+        matches = re.findall(pattern, text)
+        cleaned_text = text
+        if self.conn.memory.intimacyRule is not None:
+            if self.conn.memory.intimacyRule != "":
+                self.conn.memory.intimacy = self.conn.llm.intimacy
+                self.conn.memory.intimacyRate = self.conn.llm.intimacyRate
+        if matches and len(matches) > 0:
+            self.cot = matches[0]
+            cleaned_text = re.sub(pattern, '', text)
+        text = cleaned_text
         original_text = text
         text = MarkdownCleaner.clean_markdown(text)
         # 使用正则一次性替换，避免重复遍历和部分匹配问题

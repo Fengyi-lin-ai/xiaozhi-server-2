@@ -117,7 +117,7 @@ async def get_private_config_from_api(config, device_id, client_id):
 
 
 def ensure_directories(config):
-    """确保所有配置路径存在"""
+    """确保所有配置路径存在1"""
     dirs_to_create = set()
     project_dir = get_project_dir()  # 获取项目根目录
     # 日志文件目录

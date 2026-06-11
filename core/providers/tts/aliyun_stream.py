@@ -8,6 +8,7 @@ import time
 import queue
 import asyncio
 import traceback
+from asyncio import Task
 import websockets
 
 from asyncio import Task
@@ -18,7 +19,7 @@ from config.logger import setup_logging
 from core.utils.tts import MarkdownCleaner
 from core.providers.tts.base import TTSProviderBase
 from core.providers.tts.dto.dto import SentenceType, ContentType, InterfaceType
-
+from core.utils import opus_encoder_utils, textUtils
 
 TAG = __name__
 logger = setup_logging()
@@ -186,7 +187,7 @@ class TTSProvider(TTSProviderBase):
                 logger.bind(tag=TAG).warning("Token已过期，正在自动刷新...")
                 self._refresh_token()
             current_time = time.time()
-            if self.ws and current_time - self.last_active_time < 10:
+            if self.ws and current_time - self.last_active_time < 8:
                 # 10秒内才可以复用链接进行连续对话
                 self.task_id = uuid.uuid4().hex
                 logger.bind(tag=TAG).debug(f"使用已有链接..., task_id: {self.task_id}")

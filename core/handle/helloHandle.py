@@ -13,7 +13,7 @@ from core.providers.tts.dto.dto import SentenceType
 from core.utils.wakeup_word import WakeupWordsConfig
 from core.handle.sendAudioHandle import sendAudioMessage, send_tts_message
 from core.utils.util import remove_punctuation_and_length, opus_datas_to_wav_bytes
-from core.providers.tools.device_mcp import MCPClient, send_mcp_initialize_message
+from core.providers.tools.device_mcp import MCPClient, send_mcp_initialize_message,send_mcp_tools_list_request
 
 TAG = __name__
 
@@ -58,6 +58,24 @@ async def handleHelloMessage(conn: "ConnectionHandler", msg_json):
             asyncio.create_task(send_mcp_initialize_message(conn))
 
     await conn.websocket.send(json.dumps(conn.welcome_msg))
+    await asyncio.sleep(1)
+    response = {
+        "voice": "default",
+        "file_path": "config/assets/wakeup_words/我在静心听您诉说_镇海楼.mp3",
+        "time": 0,
+        "text": "我在这里哦！",
+    }
+    needWakeUp = False
+    if conn.agentId == "79ba1c4697534bd6e22acec0147c1489":
+        needWakeUp = True
+        response["file_path"] = "config/assets/wakeup_words/我在静心听您诉说_镇海楼.mp3"
+    if conn.agentId == "8a061d245800f50f743844cf4863eca7":
+        needWakeUp = True
+        response["file_path"] = "config/assets/wakeup_words/我在静心听您诉说_小签童.mp3"
+
+    if conn.agentId == "520992b45d622aa1a73dfbece144a083":
+        needWakeUp = True
+        response["file_path"] = "config/assets/wakeup_words/我在静心听您诉说_阿笛.mp3"
 
 
 async def checkWakeupWords(conn: "ConnectionHandler", text):
@@ -90,7 +108,7 @@ async def checkWakeupWords(conn: "ConnectionHandler", text):
         voice = "default"
 
     # 获取唤醒词回复配置
-    response = wakeup_words_config.get_wakeup_response(voice)
+    response = wakeup_words_config.get_wakeup_response(conn.agentId)
     if not response or not response.get("file_path"):
         response = {
             "voice": "default",
@@ -114,10 +132,11 @@ async def checkWakeupWords(conn: "ConnectionHandler", text):
     # 补充对话
     conn.dialogue.put(Message(role="assistant", content=response.get("text")))
 
+    # 这里注释掉的原因是每次太废资源，且影响响应testCode
     # 检查是否需要更新唤醒词回复
-    if time.time() - response.get("time", 0) > WAKEUP_CONFIG["refresh_time"]:
-        if not _wakeup_response_lock.locked():
-            asyncio.create_task(wakeupWordsResponse(conn))
+    # if time.time() - response.get("time", 0) > WAKEUP_CONFIG["refresh_time"]:
+    #     if not _wakeup_response_lock.locked():
+    #         asyncio.create_task(wakeupWordsResponse(conn))
     return True
 
 

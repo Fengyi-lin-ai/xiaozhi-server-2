@@ -78,6 +78,15 @@ async def handleHelloMessage(conn: "ConnectionHandler", msg_json):
         response["file_path"] = "config/assets/wakeup_words/我在静心听您诉说_阿笛.mp3"
 
 
+
+
+    if needWakeUp:
+        conn.client_abort = False
+        # 获取音频数据
+        opus_packets = await audio_to_data(response.get("file_path"), use_cache=True)
+        await sendAudioMessage(conn, SentenceType.FIRST, opus_packets, "欢迎提示音")
+        await sendAudioMessage(conn, SentenceType.LAST, [], None)
+
 async def checkWakeupWords(conn: "ConnectionHandler", text):
     enable_wakeup_words_response_cache = conn.config[
         "enable_wakeup_words_response_cache"

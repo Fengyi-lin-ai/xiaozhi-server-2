@@ -25,7 +25,8 @@ async def sendAudioMessage(conn: "ConnectionHandler", sentenceType, audios, text
     if conn.tts.tts_audio_first_sentence:
         conn.logger.bind(tag=TAG).info(f"发送第一段语音: {text}")
         conn.tts.tts_audio_first_sentence = False
-
+        if text == "欢迎提示音":
+            await send_tts_message(conn, "start", None)
     if sentenceType == SentenceType.FIRST:
         # 同一句子的后续消息加入流控队列，其他情况立即发送
         if (
